@@ -1,0 +1,25 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)Build.props" />
+  <Import Project="$(MSBuildThisFileDirectory)SharedProject/SharedProject.projitems" Label="Shared" />
+
+  <PropertyGroup>
+    <GameAssembly Condition="'$(PluginSide)' == 'Client'">Barotrauma</GameAssembly>
+    <GameAssembly Condition="'$(PluginSide)' == 'Server'">DedicatedServer</GameAssembly>
+    <MonoGamePlatform>$(GamePlatform)</MonoGamePlatform>
+    <MonoGamePlatform Condition="'$(GamePlatform)' == 'OSX'">MacOS</MonoGamePlatform>
+    <DefineConstants>$(DefineConstants);$([System.String]::Copy('$(PluginSide)').ToUpperInvariant());$([System.String]::Copy('$(GamePlatform)').ToUpperInvariant())</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(GameAssembly)" HintPath="$(MSBuildThisFileDirectory)Refs/$(GamePlatform)/$(GameAssembly).dll" />
+    <Reference Include="BarotraumaCore" HintPath="$(MSBuildThisFileDirectory)Refs/$(GamePlatform)/BarotraumaCore.dll" />
+    <Reference Include="MonoGame.Framework.$(MonoGamePlatform).NetStandard" HintPath="$(MSBuildThisFileDirectory)Refs/MonoGame.Framework.$(MonoGamePlatform).NetStandard.dll" />
+  </ItemGroup>
+
+  <Target Name="CopyPluginFiles" AfterTargets="Build">
+    <ItemGroup>
+      <PluginFiles Include="$(TargetPath);$(TargetDir)$(TargetName).deps.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(ModDeployDir)bin/$(PluginSide)/$(GamePlatform)/" />
+  </Target>
+</Project>

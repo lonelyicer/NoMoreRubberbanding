@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PluginSide>Client</PluginSide>
+    <GamePlatform>Windows</GamePlatform>
+  </PropertyGroup>
+  <Import Project="../Plugin.Build.props" />
+</Project>
