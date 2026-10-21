@@ -404,3 +404,6 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 .idea/*
+# Local NuGet/build cache used when the global cache is not writable
+.build/
+dist/

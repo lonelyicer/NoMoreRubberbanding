@@ -5,6 +5,20 @@ namespace NoMoreRubberbanding;
 internal enum AuthorityMode : byte { Server, Client }
 internal enum TakeoverReason : byte { Initial, Unavailable, Timeout, Teleport, Recovery, Dragged, Released }
 
+internal enum MovementHeader : byte
+{
+    Hello = 0,
+    Control = 1,
+    Heartbeat = 2,
+    Pose = 3,
+    ActorControl = 4,
+    Interaction = 5,
+    Action = 6,
+    ControlAck = 7,
+    Snapshot = 8,
+    Intent = 9
+}
+
 internal static class MovementPolicy
 {
     public const byte Version = 3;
@@ -44,23 +58,6 @@ internal readonly record struct LimbPose(ushort Index, Vector2 Offset, Vector2 V
         MovementPolicy.Valid(Velocity.X, NetConfig.MaxPhysicsBodyVelocity) &&
         MovementPolicy.Valid(Velocity.Y, NetConfig.MaxPhysicsBodyVelocity) &&
         MovementPolicy.Valid(Rotation, MathHelper.Pi) && MovementPolicy.Valid(AngularVelocity, MovementPolicy.MaxAngularVelocity);
-    public void Write(IWriteMessage msg)
-    {
-        msg.WriteUInt16(Index);
-        msg.WriteRangedSingle(Offset.X, -MovementPolicy.MaxLimbOffset, MovementPolicy.MaxLimbOffset, 16);
-        msg.WriteRangedSingle(Offset.Y, -MovementPolicy.MaxLimbOffset, MovementPolicy.MaxLimbOffset, 16);
-        msg.WriteRangedSingle(Velocity.X, -NetConfig.MaxPhysicsBodyVelocity, NetConfig.MaxPhysicsBodyVelocity, 12);
-        msg.WriteRangedSingle(Velocity.Y, -NetConfig.MaxPhysicsBodyVelocity, NetConfig.MaxPhysicsBodyVelocity, 12);
-        msg.WriteRangedSingle(Rotation, -MathHelper.Pi, MathHelper.Pi, 16);
-        msg.WriteRangedSingle(AngularVelocity, -MovementPolicy.MaxAngularVelocity, MovementPolicy.MaxAngularVelocity, 12);
-    }
-    public static LimbPose Read(IReadMessage msg) => new(msg.ReadUInt16(),
-        new Vector2(msg.ReadRangedSingle(-MovementPolicy.MaxLimbOffset, MovementPolicy.MaxLimbOffset, 16),
-            msg.ReadRangedSingle(-MovementPolicy.MaxLimbOffset, MovementPolicy.MaxLimbOffset, 16)),
-        new Vector2(msg.ReadRangedSingle(-NetConfig.MaxPhysicsBodyVelocity, NetConfig.MaxPhysicsBodyVelocity, 12),
-            msg.ReadRangedSingle(-NetConfig.MaxPhysicsBodyVelocity, NetConfig.MaxPhysicsBodyVelocity, 12)),
-        msg.ReadRangedSingle(-MathHelper.Pi, MathHelper.Pi, 16),
-        msg.ReadRangedSingle(-MovementPolicy.MaxAngularVelocity, MovementPolicy.MaxAngularVelocity, 12));
 }
 
 internal readonly record struct MovementSample(
@@ -76,71 +73,12 @@ internal readonly record struct MovementSample(
         MovementPolicy.Valid(Rotation, MathHelper.Pi) && MovementPolicy.Valid(AngularVelocity, MovementPolicy.MaxAngularVelocity) &&
         Limbs is { Length: > 0 and <= MovementPolicy.MaxPoseLimbs } && Limbs.All(l => l.IsValid) &&
         Limbs.Select(l => l.Index).Distinct().Count() == Limbs.Length;
-    public void Write(IWriteMessage msg)
-    {
-        msg.WriteUInt32(Sequence);
-        msg.WriteUInt16(SubmarineId);
-        msg.WriteUInt16(HullId);
-        WriteVector(msg, Position);
-        WriteVector(msg, Velocity);
-        WriteVector(msg, TargetMovement);
-        msg.WriteSingle(Rotation);
-        msg.WriteSingle(AngularVelocity);
-        msg.WriteBoolean(FacingLeft);
-        msg.WriteBoolean(IgnorePlatforms);
-        msg.WriteBoolean(Eligible);
-        msg.WriteBoolean(ColliderEnabled);
-        msg.WriteBoolean(FixedRotation);
-        msg.WriteBoolean(Ragdolled);
-        msg.WritePadBits();
-        msg.WriteByte(ColliderIndex);
-        msg.WriteByte((byte)(Limbs?.Length ?? 0));
-        if (Limbs != null) { foreach (var limb in Limbs) { limb.Write(msg); } }
-        msg.WritePadBits();
-    }
-    public static MovementSample Read(IReadMessage msg)
-    {
-        var sample = new MovementSample(msg.ReadUInt32(), msg.ReadUInt16(), msg.ReadUInt16(),
-            ReadVector(msg), ReadVector(msg), ReadVector(msg), msg.ReadSingle(), msg.ReadSingle(),
-            msg.ReadBoolean(), msg.ReadBoolean(), msg.ReadBoolean(),
-            ColliderEnabled: msg.ReadBoolean(), FixedRotation: msg.ReadBoolean(), Ragdolled: msg.ReadBoolean());
-        msg.ReadPadBits();
-        var colliderIndex = msg.ReadByte();
-        int count = msg.ReadByte();
-        if (count is 0 or > MovementPolicy.MaxPoseLimbs) { throw new FormatException("Invalid full-body pose length."); }
-        var limbs = new LimbPose[count];
-        for (var i = 0; i < count; i++) { limbs[i] = LimbPose.Read(msg); }
-        msg.ReadPadBits();
-        return sample with { Limbs = limbs, ColliderIndex = colliderIndex };
-    }
-    private static void WriteVector(IWriteMessage msg, Vector2 value) { msg.WriteSingle(value.X); msg.WriteSingle(value.Y); }
-    private static Vector2 ReadVector(IReadMessage msg) => new(msg.ReadSingle(), msg.ReadSingle());
 }
 
-internal readonly record struct InputIntent(uint Sequence, ushort InputId, ushort Flags, ushort Aim, ushort Interact)
-{
-    public void Write(IWriteMessage msg)
-    {
-        msg.WriteUInt32(Sequence); msg.WriteUInt16(InputId); msg.WriteUInt16(Flags); msg.WriteUInt16(Aim); msg.WriteUInt16(Interact);
-    }
-    public static InputIntent Read(IReadMessage msg) => new(msg.ReadUInt32(), msg.ReadUInt16(), msg.ReadUInt16(), msg.ReadUInt16(), msg.ReadUInt16());
-}
+internal readonly record struct InputIntent(uint Sequence, ushort InputId, ushort Flags, ushort Aim, ushort Interact);
 
 internal readonly record struct InteractionState(uint Revision, uint ProcessedAction, ushort SelectedCharacter,
-    ushort SelectedItem, ushort SelectedSecondaryItem, bool Cpr, bool Ragdolled)
-{
-    public void Write(IWriteMessage msg)
-    {
-        msg.WriteUInt32(Revision); msg.WriteUInt32(ProcessedAction);
-        msg.WriteUInt16(SelectedCharacter); msg.WriteUInt16(SelectedItem); msg.WriteUInt16(SelectedSecondaryItem);
-        msg.WriteBoolean(Cpr); msg.WriteBoolean(Ragdolled); msg.WritePadBits();
-    }
-    public static InteractionState Read(IReadMessage msg)
-    {
-        var state = new InteractionState(msg.ReadUInt32(), msg.ReadUInt32(), msg.ReadUInt16(), msg.ReadUInt16(), msg.ReadUInt16(), msg.ReadBoolean(), msg.ReadBoolean());
-        msg.ReadPadBits(); return state;
-    }
-}
+    ushort SelectedItem, ushort SelectedSecondaryItem, bool Cpr, bool Ragdolled);
 
 internal enum ActionResult { Accepted, Duplicate, Overflow }
 internal sealed class MovementInbox
@@ -206,25 +144,186 @@ internal sealed class IntentInbox
     }
 }
 
-internal static class MovementProtocol
+#pragma warning disable CS0649
+internal struct LimbPoseMessage : INetSerializableStruct
 {
-    public const string Hello = "NoMoreRubberbanding.Hello.v3";
-    public const string Snapshot = "NoMoreRubberbanding.Snapshot.v3";
-    public const string Action = "NoMoreRubberbanding.Action.v3";
-    public const string Intent = "NoMoreRubberbanding.Intent.v3";
-    public const string ActorControl = "NoMoreRubberbanding.Actor.v3";
-    public const string Interaction = "NoMoreRubberbanding.Interaction.v3";
-    public const string Control = "NoMoreRubberbanding.Control.v3";
-    public const string ControlAck = "NoMoreRubberbanding.ControlAck.v3";
-    public const string Heartbeat = "NoMoreRubberbanding.Heartbeat.v3";
-    public const string Pose = "NoMoreRubberbanding.Pose.v3";
-    public static void WriteIdentity(IWriteMessage msg, ushort characterId, ulong nonce, ulong epoch)
+    [NetworkSerialize] public ushort Index;
+    [NetworkSerialize(MinValueFloat = -MovementPolicy.MaxLimbOffset, MaxValueFloat = MovementPolicy.MaxLimbOffset, NumberOfBits = 16)]
+    public float OffsetX;
+    [NetworkSerialize(MinValueFloat = -MovementPolicy.MaxLimbOffset, MaxValueFloat = MovementPolicy.MaxLimbOffset, NumberOfBits = 16)]
+    public float OffsetY;
+    [NetworkSerialize(MinValueFloat = -NetConfig.MaxPhysicsBodyVelocity, MaxValueFloat = NetConfig.MaxPhysicsBodyVelocity, NumberOfBits = 12)]
+    public float VelocityX;
+    [NetworkSerialize(MinValueFloat = -NetConfig.MaxPhysicsBodyVelocity, MaxValueFloat = NetConfig.MaxPhysicsBodyVelocity, NumberOfBits = 12)]
+    public float VelocityY;
+    [NetworkSerialize(MinValueFloat = -MathHelper.Pi, MaxValueFloat = MathHelper.Pi, NumberOfBits = 16)]
+    public float Rotation;
+    [NetworkSerialize(MinValueFloat = -MovementPolicy.MaxAngularVelocity, MaxValueFloat = MovementPolicy.MaxAngularVelocity, NumberOfBits = 12)]
+    public float AngularVelocity;
+
+    public static LimbPoseMessage From(LimbPose pose) => new()
     {
-        msg.WriteByte(MovementPolicy.Version); msg.WriteUInt16(characterId); msg.WriteUInt64(nonce); msg.WriteUInt64(epoch);
-    }
-    public static bool ReadIdentity(IReadMessage msg, out ushort characterId, out ulong nonce, out ulong epoch)
-    {
-        var version = msg.ReadByte(); characterId = msg.ReadUInt16(); nonce = msg.ReadUInt64(); epoch = msg.ReadUInt64();
-        return version == MovementPolicy.Version;
-    }
+        Index = pose.Index,
+        OffsetX = pose.Offset.X, OffsetY = pose.Offset.Y,
+        VelocityX = pose.Velocity.X, VelocityY = pose.Velocity.Y,
+        Rotation = pose.Rotation, AngularVelocity = pose.AngularVelocity
+    };
+
+    public readonly LimbPose ToPose() =>
+        new(Index, new Vector2(OffsetX, OffsetY), new Vector2(VelocityX, VelocityY), Rotation, AngularVelocity);
 }
+
+internal struct MovementSampleMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public uint Sequence;
+    [NetworkSerialize] public ushort SubmarineId;
+    [NetworkSerialize] public ushort HullId;
+    [NetworkSerialize] public Vector2 Position;
+    [NetworkSerialize] public Vector2 Velocity;
+    [NetworkSerialize] public Vector2 TargetMovement;
+    [NetworkSerialize] public float Rotation;
+    [NetworkSerialize] public float AngularVelocity;
+    [NetworkSerialize] public bool FacingLeft;
+    [NetworkSerialize] public bool IgnorePlatforms;
+    [NetworkSerialize] public bool Eligible;
+    [NetworkSerialize] public bool ColliderEnabled;
+    [NetworkSerialize] public bool FixedRotation;
+    [NetworkSerialize] public bool Ragdolled;
+    [NetworkSerialize] public byte ColliderIndex;
+    [NetworkSerialize(ArrayMaxSize = MovementPolicy.MaxPoseLimbs)] public LimbPoseMessage[] Limbs;
+
+    public static MovementSampleMessage From(MovementSample sample) => new()
+    {
+        Sequence = sample.Sequence, SubmarineId = sample.SubmarineId, HullId = sample.HullId,
+        Position = sample.Position, Velocity = sample.Velocity, TargetMovement = sample.TargetMovement,
+        Rotation = sample.Rotation, AngularVelocity = sample.AngularVelocity,
+        FacingLeft = sample.FacingLeft, IgnorePlatforms = sample.IgnorePlatforms, Eligible = sample.Eligible,
+        ColliderEnabled = sample.ColliderEnabled, FixedRotation = sample.FixedRotation, Ragdolled = sample.Ragdolled,
+        ColliderIndex = sample.ColliderIndex,
+        Limbs = sample.Limbs is { } limbs ? limbs.Select(LimbPoseMessage.From).ToArray() : Array.Empty<LimbPoseMessage>()
+    };
+
+    public readonly MovementSample ToSample() => new(Sequence, SubmarineId, HullId, Position, Velocity, TargetMovement,
+        Rotation, AngularVelocity, FacingLeft, IgnorePlatforms, Eligible,
+        Limbs.Select(l => l.ToPose()).ToArray(), ColliderEnabled, FixedRotation, Ragdolled, ColliderIndex);
+}
+
+internal struct InputIntentMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public uint Sequence;
+    [NetworkSerialize] public ushort InputId;
+    [NetworkSerialize] public ushort Flags;
+    [NetworkSerialize] public ushort Aim;
+    [NetworkSerialize] public ushort Interact;
+
+    public static InputIntentMessage From(InputIntent intent) => new()
+    {
+        Sequence = intent.Sequence, InputId = intent.InputId, Flags = intent.Flags, Aim = intent.Aim, Interact = intent.Interact
+    };
+
+    public readonly InputIntent ToIntent() => new(Sequence, InputId, Flags, Aim, Interact);
+}
+
+internal struct InteractionStateMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public uint Revision;
+    [NetworkSerialize] public uint ProcessedAction;
+    [NetworkSerialize] public ushort SelectedCharacter;
+    [NetworkSerialize] public ushort SelectedItem;
+    [NetworkSerialize] public ushort SelectedSecondaryItem;
+    [NetworkSerialize] public bool Cpr;
+    [NetworkSerialize] public bool Ragdolled;
+
+    public static InteractionStateMessage From(InteractionState state) => new()
+    {
+        Revision = state.Revision, ProcessedAction = state.ProcessedAction,
+        SelectedCharacter = state.SelectedCharacter, SelectedItem = state.SelectedItem,
+        SelectedSecondaryItem = state.SelectedSecondaryItem, Cpr = state.Cpr, Ragdolled = state.Ragdolled
+    };
+
+    public readonly InteractionState ToState() => new(Revision, ProcessedAction, SelectedCharacter,
+        SelectedItem, SelectedSecondaryItem, Cpr, Ragdolled);
+}
+
+internal struct HelloMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+}
+
+internal struct ControlAckMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Epoch;
+    [NetworkSerialize] public bool Ready;
+}
+
+internal struct SnapshotMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Epoch;
+    [NetworkSerialize] public MovementSampleMessage Sample;
+}
+
+internal struct ControlMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Epoch;
+    [NetworkSerialize] public byte Mode;
+    [NetworkSerialize] public byte Reason;
+    [NetworkSerialize] public ushort Writer;
+    [NetworkSerialize] public MovementSampleMessage Sample;
+}
+
+internal struct HeartbeatMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Epoch;
+    [NetworkSerialize] public byte Mode;
+    [NetworkSerialize] public ushort Writer;
+}
+
+internal struct PoseMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Epoch;
+    [NetworkSerialize] public MovementSampleMessage Sample;
+}
+
+internal struct ActorControlMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Generation;
+}
+
+internal struct InteractionMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Generation;
+    [NetworkSerialize] public InteractionStateMessage State;
+}
+
+internal struct ActionMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Generation;
+    [NetworkSerialize] public uint ActionId;
+    [NetworkSerialize] public InputIntentMessage Intent;
+}
+
+internal struct IntentMessage : INetSerializableStruct
+{
+    [NetworkSerialize] public ushort CharacterId;
+    [NetworkSerialize] public ulong Nonce;
+    [NetworkSerialize] public ulong Generation;
+    [NetworkSerialize] public InputIntentMessage Intent;
+}
+#pragma warning restore CS0649

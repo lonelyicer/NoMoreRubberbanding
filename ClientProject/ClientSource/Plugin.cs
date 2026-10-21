@@ -35,17 +35,11 @@ public partial class Plugin
 
     private void RegisterMessages()
     {
-        Network.Receive(MovementProtocol.Control, msg => ReadSafely(() => ReceiveControl(msg)));
-        Network.Receive(MovementProtocol.Heartbeat, msg => ReadSafely(() => ReceiveHeartbeat(msg)));
-        Network.Receive(MovementProtocol.Pose, msg => ReadSafely(() => ReceivePose(msg)));
-        Network.Receive(MovementProtocol.ActorControl, msg => ReadSafely(() => ReceiveActorControl(msg)));
-        Network.Receive(MovementProtocol.Interaction, msg => ReadSafely(() => ReceiveInteraction(msg)));
-    }
-    private static void Ignore(IReadMessage msg) { }
-    private void UnregisterMessages()
-    {
-        foreach (var name in new[] { MovementProtocol.Control, MovementProtocol.Heartbeat, MovementProtocol.Pose, MovementProtocol.ActorControl, MovementProtocol.Interaction })
-        { Network.Receive(name, Ignore); }
+        Network.RegisterHandler<MovementHeader, ControlMessage>(MovementHeader.Control, msg => ReadSafely(() => ReceiveControl(msg)));
+        Network.RegisterHandler<MovementHeader, HeartbeatMessage>(MovementHeader.Heartbeat, msg => ReadSafely(() => ReceiveHeartbeat(msg)));
+        Network.RegisterHandler<MovementHeader, PoseMessage>(MovementHeader.Pose, msg => ReadSafely(() => ReceivePose(msg)));
+        Network.RegisterHandler<MovementHeader, ActorControlMessage>(MovementHeader.ActorControl, msg => ReadSafely(() => ReceiveActorControl(msg)));
+        Network.RegisterHandler<MovementHeader, InteractionMessage>(MovementHeader.Interaction, msg => ReadSafely(() => ReceiveInteraction(msg)));
     }
     private void InstallPatches()
     {
@@ -74,21 +68,20 @@ public partial class Plugin
         }
         if (Now < _nextHello) { return; }
         _nextHello = Now + 1;
-        var msg = Network.Start(MovementProtocol.Hello);
-        MovementProtocol.WriteIdentity(msg, c.ID, _nonce, 0); Network.SendToServer(msg);
+        Network.Send(MovementHeader.Hello, new HelloMessage { CharacterId = c.ID, Nonce = _nonce });
         foreach (var body in _bodies.Values.Where(b => b.Writer == c.ID)) { Acknowledge(body); }
     }
-    private bool ReadIdentity(IReadMessage msg, out Character c, out ulong token)
+    private bool ReadIdentity(ushort id, ulong nonce, ulong token, out Character c, out ulong generation)
     {
-        c = null!; token = 0;
-        if (_disposed || !MovementProtocol.ReadIdentity(msg, out var id, out var nonce, out token) || token == 0 ||
-            _controlled == null || _controlled != GameMain.Client?.Character || _controlled != Character.Controlled || nonce != _nonce ||
+        c = null!; generation = token;
+        if (_disposed || token == 0 || _controlled == null || _controlled != GameMain.Client?.Character ||
+            _controlled != Character.Controlled || nonce != _nonce ||
             Entity.FindEntityByID(id) is not Character { Removed: false } character) { return false; }
         c = character; return true;
     }
-    private void ReceiveActorControl(IReadMessage msg)
+    private void ReceiveActorControl(ActorControlMessage msg)
     {
-        if (!ReadIdentity(msg, out var c, out var generation)) { _stalePackets++; return; }
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Generation, out var c, out var generation)) { _stalePackets++; return; }
         if (!_actors.TryGetValue(c.ID, out var actor) || actor.Character != c)
         { actor = new ClientActor(c); _actors[c.ID] = actor; }
         if (generation < actor.Generation) { _stalePackets++; return; }
@@ -97,21 +90,21 @@ public partial class Plugin
         actor.Generation = generation; actor.Sequence = actor.ActionSequence = 0; actor.PreviousButtons = 0;
         actor.Latest = null; actor.State = actor.PendingState = null;
     }
-    private void ReceiveInteraction(IReadMessage msg)
+    private void ReceiveInteraction(InteractionMessage msg)
     {
-        if (!ReadIdentity(msg, out var c, out var generation) || !_actors.TryGetValue(c.ID, out var actor) ||
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Generation, out var c, out var generation) || !_actors.TryGetValue(c.ID, out var actor) ||
             actor.Character != c || actor.Generation != generation) { _stalePackets++; return; }
-        var state = InteractionState.Read(msg);
+        var state = msg.State.ToState();
         if (actor.State is { } previous && !MovementPolicy.MoreRecent(state.Revision, previous.Revision)) { return; }
         actor.State = actor.PendingState = state; actor.LastControl = Now;
     }
-    private void ReceiveControl(IReadMessage msg)
+    private void ReceiveControl(ControlMessage msg)
     {
-        if (!ReadIdentity(msg, out var c, out var epoch)) { _stalePackets++; return; }
-        var mode = (AuthorityMode)msg.ReadByte();
-        var reason = (TakeoverReason)msg.ReadByte();
-        var writer = msg.ReadUInt16();
-        var sample = MovementSample.Read(msg);
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Epoch, out var c, out var epoch)) { _stalePackets++; return; }
+        var mode = (AuthorityMode)msg.Mode;
+        var reason = (TakeoverReason)msg.Reason;
+        var writer = msg.Writer;
+        var sample = msg.Sample.ToSample();
         if (mode > AuthorityMode.Client || reason > TakeoverReason.Released ||
             (mode == AuthorityMode.Client && writer == 0) || !ValidPose(c, sample) || !Resolve(sample, out _, out _, out _))
         { _stalePackets++; return; }
@@ -123,18 +116,18 @@ public partial class Plugin
         body.Epoch = epoch; body.Mode = mode; body.Writer = writer; body.Sequence = 0; body.GrantedAt = Now;
         body.RemotePose = null; body.PendingControl = sample; body.ConfirmedRagdoll = sample.Ragdolled;
     }
-    private void ReceiveHeartbeat(IReadMessage msg)
+    private void ReceiveHeartbeat(HeartbeatMessage msg)
     {
-        if (!ReadIdentity(msg, out var c, out var epoch)) { return; }
-        var mode = (AuthorityMode)msg.ReadByte(); var writer = msg.ReadUInt16();
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Epoch, out var c, out var epoch)) { return; }
+        var mode = (AuthorityMode)msg.Mode; var writer = msg.Writer;
         if (_bodies.TryGetValue(c.ID, out var b) && b.Character == c && b.Epoch == epoch && b.Mode == mode && b.Writer == writer)
         { b.LastControl = Now; }
     }
-    private void ReceivePose(IReadMessage msg)
+    private void ReceivePose(PoseMessage msg)
     {
-        if (!ReadIdentity(msg, out var c, out var epoch) || !_bodies.TryGetValue(c.ID, out var body) || body.Character != c ||
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Epoch, out var c, out var epoch) || !_bodies.TryGetValue(c.ID, out var body) || body.Character != c ||
             body.Epoch != epoch || body.Mode != AuthorityMode.Client || body.Writer == _controlled!.ID) { _stalePackets++; return; }
-        var sample = MovementSample.Read(msg);
+        var sample = msg.Sample.ToSample();
         if (!ValidPose(c, sample) || !Resolve(sample, out _, out _, out _) ||
             (body.RemotePose is { } previous && !MovementPolicy.MoreRecent(sample.Sequence, previous.Sequence)))
         { _stalePackets++; return; }
@@ -143,10 +136,11 @@ public partial class Plugin
     private void Acknowledge(ClientBody body)
     {
         if (_controlled == null || body.Writer != _controlled.ID || body.PendingControl.HasValue) { return; }
-        var msg = Network.Start(MovementProtocol.ControlAck);
-        MovementProtocol.WriteIdentity(msg, body.Character.ID, _nonce, body.Epoch);
-        msg.WriteBoolean(CanOwnMovement(body.Character) && (body.Character == _controlled || _controlled.SelectedCharacter == body.Character));
-        msg.WritePadBits(); Network.SendToServer(msg);
+        Network.Send(MovementHeader.ControlAck, new ControlAckMessage
+        {
+            CharacterId = body.Character.ID, Nonce = _nonce, Epoch = body.Epoch,
+            Ready = CanOwnMovement(body.Character) && (body.Character == _controlled || _controlled.SelectedCharacter == body.Character)
+        });
     }
     private bool HasLease(Character c, out ClientBody body)
     {
@@ -157,9 +151,6 @@ public partial class Plugin
                 body.RemotePose.HasValue ? body.PoseReceivedAt : body.GrantedAt, MovementPolicy.SnapshotTimeout));
     }
     
-    private bool OwnsMovement(Character c) => HasLease(c, out var body) && body.Writer == _controlled!.ID &&
-        !body.PendingControl.HasValue && CanOwnMovement(c) && (c == _controlled || _controlled.SelectedCharacter == c);
-
     private static void BeforeWorldUpdate()
     {
         if (_instance is not { } p) { return; }
@@ -193,7 +184,6 @@ public partial class Plugin
     private static bool BeforeNetInput(Character __instance)
     {
         if (_instance is not { } p || __instance == p._controlled || !p.HasLease(__instance, out var body)) { return true; }
-        // The dragger receives the OWNER's posture from the server, never its own keys.
         var ragdoll = p._actors.TryGetValue(__instance.ID, out var actor) && actor.State is { } state ? state.Ragdolled : body.ConfirmedRagdoll;
         __instance.SetInput(InputType.Ragdoll, false, ragdoll);
         __instance.IsRagdolled = ragdoll || __instance.IsForceRagdolled;
@@ -216,17 +206,16 @@ public partial class Plugin
         intent = intent with { Flags = (ushort)((intent.Flags & ~MovementPolicy.ActionMask) | buttons) };
         actor.Latest = intent;
         var held = (ushort)(buttons & MovementPolicy.HeldActionMask);
-        // Ragdoll changes also use the reliable channel so a dropped latest-value packet
-        // cannot leave a dragged player upright or prone indefinitely.
         var reliable = (ushort)(held | (intent.Flags & MovementPolicy.RagdollKey));
         if ((buttons & MovementPolicy.EdgeMask) != 0 || reliable != actor.PreviousButtons)
         {
-            var msg = Network.Start(MovementProtocol.Action);
-            MovementProtocol.WriteIdentity(msg, __instance.ID, p._nonce, actor.Generation);
-            msg.WriteUInt32(++actor.ActionSequence); intent.Write(msg);
-            Network.SendToServer(msg); p._actions++; actor.PreviousButtons = reliable;
+            Network.Send(MovementHeader.Action, new ActionMessage
+            {
+                CharacterId = __instance.ID, Nonce = p._nonce, Generation = actor.Generation,
+                ActionId = ++actor.ActionSequence, Intent = InputIntentMessage.From(intent)
+            });
+            p._actions++; actor.PreviousButtons = reliable;
         }
-        // Keep a bounded local native history for fallback, but never let it drive the server.
         if (__instance.MemLocalState.Count > 120) { __instance.MemLocalState.RemoveRange(0, __instance.MemLocalState.Count - 120); }
     }
     private static bool BeforeSelectCharacter(Character __instance, Character? __0)
@@ -237,8 +226,6 @@ public partial class Plugin
     private static void AfterCharacters()
     {
         if (_instance is not { } p) { return; }
-        // Character.Update applies the native ragdoll lock/velocity rules AFTER UpdateNetInput.
-        // Publish that committed owner result, not an early key release that would stand a victim up.
         if (p._controlled is { } c && p._actors.TryGetValue(c.ID, out var actor) && actor.Latest is { } latest)
         {
             var posture = c.IsRagdolled ? MovementPolicy.RagdollKey : (ushort)0;
@@ -249,10 +236,12 @@ public partial class Plugin
                 if (posture != 0) { intent = intent with { Flags = (ushort)(intent.Flags & ~MovementPolicy.ActionMask) }; }
                 actor.Latest = intent;
                 actor.PreviousButtons = (ushort)(intent.Flags & (MovementPolicy.HeldActionMask | MovementPolicy.RagdollKey));
-                var msg = Network.Start(MovementProtocol.Action);
-                MovementProtocol.WriteIdentity(msg, c.ID, p._nonce, actor.Generation);
-                msg.WriteUInt32(++actor.ActionSequence); intent.Write(msg);
-                Network.SendToServer(msg); p._actions++;
+                Network.Send(MovementHeader.Action, new ActionMessage
+                {
+                    CharacterId = c.ID, Nonce = p._nonce, Generation = actor.Generation,
+                    ActionId = ++actor.ActionSequence, Intent = InputIntentMessage.From(intent)
+                });
+                p._actions++;
             }
         }
         p.RestoreReplicas();
@@ -266,9 +255,11 @@ public partial class Plugin
         p._nextSnapshot = Now + MovementPolicy.SendInterval;
         if (!p._controlled.IsDead && p._actors.TryGetValue(p._controlled.ID, out var actor) && actor.Latest is { } intent)
         {
-            var msg = Network.Start(MovementProtocol.Intent);
-            MovementProtocol.WriteIdentity(msg, actor.Character.ID, p._nonce, actor.Generation);
-            intent.Write(msg); Network.SendToServer(msg, DeliveryMethod.Unreliable);
+            Network.Send(MovementHeader.Intent, new IntentMessage
+            {
+                CharacterId = actor.Character.ID, Nonce = p._nonce, Generation = actor.Generation,
+                Intent = InputIntentMessage.From(intent)
+            });
         }
         foreach (var body in p._bodies.Values)
         {
@@ -278,9 +269,12 @@ public partial class Plugin
             var sample = Capture(c, ++body.Sequence);
             sample = sample with { Eligible = sample.Eligible && (c == p._controlled || p._controlled.SelectedCharacter == c) };
             if (!sample.IsValid) { continue; }
-            var msg = Network.Start(MovementProtocol.Snapshot);
-            MovementProtocol.WriteIdentity(msg, c.ID, p._nonce, body.Epoch);
-            sample.Write(msg); Network.SendToServer(msg, DeliveryMethod.Unreliable); p._snapshots++;
+            Network.Send(MovementHeader.Snapshot, new SnapshotMessage
+            {
+                CharacterId = c.ID, Nonce = p._nonce, Epoch = body.Epoch,
+                Sample = MovementSampleMessage.From(sample)
+            });
+            p._snapshots++;
         }
     }
     private static bool ReconcileOwnerState(Ragdoll __instance)

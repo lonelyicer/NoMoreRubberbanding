@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <PluginSide>Server</PluginSide>
-    <GamePlatform>Linux</GamePlatform>
+    <PlatformName>Linux</PlatformName>
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
   </PropertyGroup>
-  <Import Project="../Plugin.Build.props" />
+  <Import Project="ServerItems.props" />
 </Project>

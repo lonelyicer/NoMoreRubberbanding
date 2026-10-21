@@ -1,0 +1,50 @@
+<Project>
+  <ItemGroup Condition="'$(UsePublicizedAssemblies)' != 'true'">
+    <PackageReference Include="Barotrauma.ReferenceAssemblies.Vanilla" GeneratePathProperty="true" Version="1.15.22-unstable" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UsePublicizedAssemblies)' == 'true'">
+    <PackageReference Include="Barotrauma.ReferenceAssemblies.Vanilla.Publicized" GeneratePathProperty="true" Version="1.15.22-unstable" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Barotrauma.ReferenceAssemblies.Libraries" Version="*" />
+    <PackageReference Include="HarmonyX" Version="2.16.0" />
+
+    <ProjectReference Include="..\ContentPackageBuilder\ContentPackageBuilder.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Barotrauma" />
+    <Using Include="Microsoft.Xna.Framework" />
+  </ItemGroup>
+
+  <Import Project="..\References.props" />
+
+  <PropertyGroup>
+    <BarotraumaPackageAssembly Condition="'$(UsePublicizedAssemblies)' != 'true'">$(PkgBarotrauma_ReferenceAssemblies_Vanilla)</BarotraumaPackageAssembly>
+    <BarotraumaPackageAssembly Condition="'$(UsePublicizedAssemblies)' == 'true'">$(PkgBarotrauma_ReferenceAssemblies_Vanilla_Publicized)</BarotraumaPackageAssembly>
+  </PropertyGroup>
+
+  <Target Name="ReadGameVersion" AfterTargets="ResolveReferences"
+    BeforeTargets="GenerateAssemblyInfo">
+    <GetAssemblyIdentity AssemblyFiles="$(BarotraumaPackageAssembly)/assemblies/Windows/Barotrauma.dll">
+      <Output TaskParameter="Assemblies" ItemName="GameAssemblyIdentity" />
+    </GetAssemblyIdentity>
+
+    <PropertyGroup>
+      <GameVersion>@(GameAssemblyIdentity->'%(Version)')</GameVersion>
+    </PropertyGroup>
+
+    <Message Importance="High" Text="Detected Barotrauma version: $(GameVersion)" />
+
+    <ItemGroup Label="BarotraumaMetadata">
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>GameVersion</_Parameter1>
+        <_Parameter2>$(GameVersion)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

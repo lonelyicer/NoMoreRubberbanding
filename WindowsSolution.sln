@@ -1,0 +1,41 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowsClient", "ClientProject\WindowsClient.csproj", "{A18836C4-423F-44D4-9850-E6AC1B9EFCAC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowsServer", "ServerProject\WindowsServer.csproj", "{77540BA4-94D4-4B33-B70E-BDC735BF278D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContentPackageBuilder", "ContentPackageBuilder\ContentPackageBuilder.csproj", "{A3A7406F-B552-4D66-A398-A2F1379930BC}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SharedProject", "SharedProject\SharedProject.shproj", "{3C1540C8-8235-4E85-8BFF-9AF5FE32FE99}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A18836C4-423F-44D4-9850-E6AC1B9EFCAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A18836C4-423F-44D4-9850-E6AC1B9EFCAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A18836C4-423F-44D4-9850-E6AC1B9EFCAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A18836C4-423F-44D4-9850-E6AC1B9EFCAC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77540BA4-94D4-4B33-B70E-BDC735BF278D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77540BA4-94D4-4B33-B70E-BDC735BF278D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77540BA4-94D4-4B33-B70E-BDC735BF278D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77540BA4-94D4-4B33-B70E-BDC735BF278D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3A7406F-B552-4D66-A398-A2F1379930BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3A7406F-B552-4D66-A398-A2F1379930BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3A7406F-B552-4D66-A398-A2F1379930BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3A7406F-B552-4D66-A398-A2F1379930BC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		SharedProject\SharedProject.projitems*{a18836c4-423f-44d4-9850-e6ac1b9efcac}*SharedItemsImports = 5
+		SharedProject\SharedProject.projitems*{77540ba4-94d4-4b33-b70e-bdc735bf278d}*SharedItemsImports = 5
+		SharedProject\SharedProject.projitems*{3c1540c8-8235-4e85-8bff-9af5fe32fe99}*SharedItemsImports = 13
+	EndGlobalSection
+EndGlobal

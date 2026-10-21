@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "Launch Barotrauma": {
-      "commandName": "Executable",
-      "executablePath": "$(ModDeployDir)\\..\\..\\Barotrauma.exe"
-    }
-  }
-}

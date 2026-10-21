@@ -1,18 +1,18 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Barotrauma.Networking;
+using Barotrauma.Plugins;
 using FarseerPhysics;
-using Barotrauma.LuaCs.Events;
 using HarmonyLib;
 
 namespace NoMoreRubberbanding;
 
-public partial class Plugin : IAssemblyPlugin, IEventUpdate, IEventRoundStarted, IEventRoundEnded
+public partial class Plugin : IBarotraumaPlugin
 {
-    public IConfigService ConfigService { get; set; } = null!;
-    public IPluginManagementService PluginService { get; set; } = null!;
-    // ReSharper disable once MemberCanBePrivate.Global
-    public ILoggerService LoggerService { get; set; } = null!;
+    public static readonly IDebugConsole DebugConsole = PluginServiceProvider.GetService<IDebugConsole>();
+    public static readonly ISimpleHookService Hooks = PluginServiceProvider.GetService<ISimpleHookService>();
+    public static readonly IHarmonyProvider HarmonyProvider = PluginServiceProvider.GetService<IHarmonyProvider>();
+    public static readonly IGameNetwork Network = PluginServiceProvider.GetService<IGameNetwork>();
     private static Plugin? _instance;
     private Harmony? _harmony;
     private bool _disposed;
@@ -21,21 +21,20 @@ public partial class Plugin : IAssemblyPlugin, IEventUpdate, IEventRoundStarted,
     private long _simulationSteps;
     private long _snapshots, _stalePackets, _actions, _takeovers, _suppressedCorrections;
     private static double Now => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
-    private static INetworkingService Network => LuaCsSetup.Instance.Networking;
-    private static IEventService Events => LuaCsSetup.Instance.EventService;
 
-    public void Initialize()
+    public void Init()
     {
         _instance = this;
         try
         {
+            Network.RegisterNetworkHeaders<MovementHeader>();
             RegisterMessages();
-            _harmony = new Harmony("NoMoreRubberbanding.Movement");
+            _harmony = HarmonyProvider.GetHarmony();
             InstallPatches();
-            Events.Subscribe<IEventUpdate>(this);
-            Events.Subscribe<IEventRoundStarted>(this);
-            Events.Subscribe<IEventRoundEnded>(this);
-            LoggerService.Log($"[NoMoreRubberbanding] Client movement authority loaded (protocol {MovementPolicy.Version}).");
+            Hooks.RegisterHook<PluginOnPreUpdateDelegate>(OnUpdate);
+            Hooks.RegisterHook<PluginRoundStartedDelegate>(OnRoundStart);
+            Hooks.RegisterHook<PluginRoundEndedDelegate>(OnRoundEnd);
+            DebugConsole.NewMessage($"[NoMoreRubberbanding] Movement authority loaded (protocol {MovementPolicy.Version}).");
         }
         catch
         {
@@ -44,12 +43,12 @@ public partial class Plugin : IAssemblyPlugin, IEventUpdate, IEventRoundStarted,
         }
     }
 
-    public void OnLoadCompleted() { }
-    public void PreInitPatching() { }
-    public void OnRoundStart() => ResetSessions();
-    public void OnRoundEnd() => ResetSessions();
+    public void OnContentLoaded() { }
 
-    public void OnUpdate(double fixedDeltaTime)
+    private void OnRoundStart(GameSession gameSession) => ResetSessions();
+    private void OnRoundEnd(GameSession gameSession) => ResetSessions();
+
+    private void OnUpdate(float deltaTime)
     {
         if (_disposed) { return; }
         UpdateSessions();
@@ -60,8 +59,8 @@ public partial class Plugin : IAssemblyPlugin, IEventUpdate, IEventRoundStarted,
         _simulationSteps = 0;
         _statisticsStarted = Now;
         if (_snapshots + _stalePackets + _actions + _takeovers + _suppressedCorrections == 0) { return; }
-        LoggerService.Log($"[NoMoreRubberbanding] simulation steps/s={simulationRate:F1}, snapshots={_snapshots}, stale={_stalePackets}, " +
-                          $"actions={_actions}, takeovers={_takeovers}, owner corrections bypassed={_suppressedCorrections}");
+        DebugConsole.NewMessage($"[NoMoreRubberbanding] simulation steps/s={simulationRate:F1}, snapshots={_snapshots}, stale={_stalePackets}, " +
+                                $"actions={_actions}, takeovers={_takeovers}, owner corrections bypassed={_suppressedCorrections}");
         _snapshots = _stalePackets = _actions = _takeovers = _suppressedCorrections = 0;
     }
 
@@ -70,11 +69,7 @@ public partial class Plugin : IAssemblyPlugin, IEventUpdate, IEventRoundStarted,
         if (_disposed) { return; }
         _disposed = true;
         _harmony?.UnpatchSelf();
-        Events.Unsubscribe<IEventUpdate>(this);
-        Events.Unsubscribe<IEventRoundStarted>(this);
-        Events.Unsubscribe<IEventRoundEnded>(this);
         ResetSessions();
-        UnregisterMessages();
         if (_instance == this) { _instance = null; }
     }
 

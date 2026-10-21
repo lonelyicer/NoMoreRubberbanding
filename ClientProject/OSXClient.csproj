@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <PluginSide>Client</PluginSide>
-    <GamePlatform>OSX</GamePlatform>
-  </PropertyGroup>
-  <Import Project="../Plugin.Build.props" />
-</Project>

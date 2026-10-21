@@ -1,0 +1,41 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LinuxClient", "ClientProject\LinuxClient.csproj", "{3E872206-9F50-4C96-AA0C-06461EE129FA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LinuxServer", "ServerProject\LinuxServer.csproj", "{345D32EA-C614-4D3F-BC00-83BF08EAA791}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContentPackageBuilder", "ContentPackageBuilder\ContentPackageBuilder.csproj", "{5DA4D947-9478-4B58-8164-93B8F0A8040E}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SharedProject", "SharedProject\SharedProject.shproj", "{3C1540C8-8235-4E85-8BFF-9AF5FE32FE99}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3E872206-9F50-4C96-AA0C-06461EE129FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E872206-9F50-4C96-AA0C-06461EE129FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E872206-9F50-4C96-AA0C-06461EE129FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E872206-9F50-4C96-AA0C-06461EE129FA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{345D32EA-C614-4D3F-BC00-83BF08EAA791}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{345D32EA-C614-4D3F-BC00-83BF08EAA791}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{345D32EA-C614-4D3F-BC00-83BF08EAA791}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{345D32EA-C614-4D3F-BC00-83BF08EAA791}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5DA4D947-9478-4B58-8164-93B8F0A8040E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DA4D947-9478-4B58-8164-93B8F0A8040E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DA4D947-9478-4B58-8164-93B8F0A8040E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DA4D947-9478-4B58-8164-93B8F0A8040E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		SharedProject\SharedProject.projitems*{3e872206-9f50-4c96-aa0c-06461ee129fa}*SharedItemsImports = 5
+		SharedProject\SharedProject.projitems*{345d32ea-c614-4d3f-bc00-83bf08eaa791}*SharedItemsImports = 5
+		SharedProject\SharedProject.projitems*{3c1540c8-8235-4e85-8bff-9af5fe32fe99}*SharedItemsImports = 13
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,41 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacClient", "ClientProject\MacClient.csproj", "{7A37E078-DB6D-42D6-8630-AF0D5162A357}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MacServer", "ServerProject\MacServer.csproj", "{9AF52B71-8A49-45A9-B303-B0565B4A9217}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContentPackageBuilder", "ContentPackageBuilder\ContentPackageBuilder.csproj", "{D7E7511B-CCEC-4617-AD58-D49B028FE2B0}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SharedProject", "SharedProject\SharedProject.shproj", "{3C1540C8-8235-4E85-8BFF-9AF5FE32FE99}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7A37E078-DB6D-42D6-8630-AF0D5162A357}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A37E078-DB6D-42D6-8630-AF0D5162A357}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A37E078-DB6D-42D6-8630-AF0D5162A357}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7A37E078-DB6D-42D6-8630-AF0D5162A357}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9AF52B71-8A49-45A9-B303-B0565B4A9217}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9AF52B71-8A49-45A9-B303-B0565B4A9217}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9AF52B71-8A49-45A9-B303-B0565B4A9217}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9AF52B71-8A49-45A9-B303-B0565B4A9217}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D7E7511B-CCEC-4617-AD58-D49B028FE2B0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D7E7511B-CCEC-4617-AD58-D49B028FE2B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D7E7511B-CCEC-4617-AD58-D49B028FE2B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D7E7511B-CCEC-4617-AD58-D49B028FE2B0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		SharedProject\SharedProject.projitems*{7a37e078-db6d-42d6-8630-af0d5162a357}*SharedItemsImports = 5
+		SharedProject\SharedProject.projitems*{9af52b71-8a49-45a9-b303-b0565b4a9217}*SharedItemsImports = 5
+		SharedProject\SharedProject.projitems*{3c1540c8-8235-4e85-8bff-9af5fe32fe99}*SharedItemsImports = 13
+	EndGlobalSection
+EndGlobal

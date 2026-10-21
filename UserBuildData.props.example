@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!--
+    Point this at the LocalMods folder of your Barotrauma installation, for example:
+    Windows: C:\Program Files (x86)\Steam\steamapps\common\Barotrauma\LocalMods
+    Linux:   ~/.steam/steam/steamapps/common/Barotrauma/LocalMods
+    The build writes into <ModDeployDir>/NoMoreRubberbanding/.
+    -->
+    <ModDeployDir>LocalMods</ModDeployDir>
+  </PropertyGroup>
+</Project>

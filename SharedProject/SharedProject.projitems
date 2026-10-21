@@ -9,7 +9,7 @@
     <Import_RootNamespace>SharedProject</Import_RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\AssemblySettings.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\IgnoresAccessChecksTo.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Plugin.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedSource\MovementProtocol.cs" />
   </ItemGroup>

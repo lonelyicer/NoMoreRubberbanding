@@ -38,17 +38,11 @@ public partial class Plugin
 
     private void RegisterMessages()
     {
-        Network.Receive(MovementProtocol.Hello, (msg, c) => ReadSafely(() => ReceiveHello(msg, c)));
-        Network.Receive(MovementProtocol.ControlAck, (msg, c) => ReadSafely(() => ReceiveControlAck(msg, c)));
-        Network.Receive(MovementProtocol.Snapshot, (msg, c) => ReadSafely(() => ReceiveSnapshot(msg, c)));
-        Network.Receive(MovementProtocol.Intent, (msg, c) => ReadSafely(() => ReceiveIntent(msg, c)));
-        Network.Receive(MovementProtocol.Action, (msg, c) => ReadSafely(() => ReceiveAction(msg, c)));
-    }
-    private static void Ignore(IReadMessage msg, Client c) { }
-    private void UnregisterMessages()
-    {
-        foreach (var name in new[] { MovementProtocol.Hello, MovementProtocol.ControlAck, MovementProtocol.Snapshot, MovementProtocol.Intent, MovementProtocol.Action })
-        { Network.Receive(name, Ignore); }
+        Network.RegisterHandler<MovementHeader, HelloMessage>(MovementHeader.Hello, (msg, c) => ReadSafely(() => ReceiveHello(msg, c)));
+        Network.RegisterHandler<MovementHeader, ControlAckMessage>(MovementHeader.ControlAck, (msg, c) => ReadSafely(() => ReceiveControlAck(msg, c)));
+        Network.RegisterHandler<MovementHeader, SnapshotMessage>(MovementHeader.Snapshot, (msg, c) => ReadSafely(() => ReceiveSnapshot(msg, c)));
+        Network.RegisterHandler<MovementHeader, IntentMessage>(MovementHeader.Intent, (msg, c) => ReadSafely(() => ReceiveIntent(msg, c)));
+        Network.RegisterHandler<MovementHeader, ActionMessage>(MovementHeader.Action, (msg, c) => ReadSafely(() => ReceiveAction(msg, c)));
     }
     private void InstallPatches()
     {
@@ -133,16 +127,18 @@ public partial class Plugin
             a.NextHeartbeat = Now + 0.5;
             foreach (var peer in _peers.Values)
             {
-                var msg = Network.Start(MovementProtocol.Heartbeat);
-                MovementProtocol.WriteIdentity(msg, a.Character.ID, peer.Nonce, a.Epoch);
-                msg.WriteByte((byte)a.Mode); msg.WriteUInt16(a.Writer?.Character.ID ?? 0);
-                Network.SendToClient(msg, peer.Client.Connection, DeliveryMethod.Unreliable);
+                Network.SendToClient(peer.Client, MovementHeader.Heartbeat, new HeartbeatMessage
+                {
+                    CharacterId = a.Character.ID, Nonce = peer.Nonce, Epoch = a.Epoch,
+                    Mode = (byte)a.Mode, Writer = a.Writer?.Character.ID ?? 0
+                });
             }
         }
     }
-    private void ReceiveHello(IReadMessage msg, Client client)
+    private void ReceiveHello(HelloMessage msg, Client client)
     {
-        if (_disposed || !MovementProtocol.ReadIdentity(msg, out var id, out var nonce, out _) || nonce == 0 ||
+        var id = msg.CharacterId; var nonce = msg.Nonce;
+        if (_disposed || nonce == 0 ||
             GameMain.Server is not { GameStarted: true } || !GameMain.Server.ConnectedClients.Contains(client) ||
             client.Character is not { Removed: false } c || c.ID != id) { return; }
         var fresh = !_peers.TryGetValue(client, out var peer) || peer.Character != c || peer.Nonce != nonce;
@@ -163,59 +159,58 @@ public partial class Plugin
     }
     private static void SendActorControl(PeerSession actor, PeerSession recipient)
     {
-        var msg = Network.Start(MovementProtocol.ActorControl);
-        MovementProtocol.WriteIdentity(msg, actor.Character.ID, recipient.Nonce, actor.Generation);
-        Network.SendToClient(msg, recipient.Client.Connection);
+        Network.SendToClient(recipient.Client, MovementHeader.ActorControl, new ActorControlMessage
+        {
+            CharacterId = actor.Character.ID, Nonce = recipient.Nonce, Generation = actor.Generation
+        });
     }
-    private bool ReadActor(IReadMessage msg, Client client, out PeerSession peer)
+    private bool ReadActor(ushort id, ulong nonce, ulong generation, Client client, out PeerSession peer)
     {
         peer = null!;
-        if (_disposed || !MovementProtocol.ReadIdentity(msg, out var id, out var nonce, out var generation) ||
+        if (_disposed ||
             !_peers.TryGetValue(client, out var found) || !PeerValid(found) ||
             !MovementPolicy.CanWriteActions(found.Character.ID, id) ||
             !MovementPolicy.MatchesIdentity(found.Character.ID, found.Nonce, found.Generation, id, nonce, generation))
         { _stalePackets++; return false; }
         peer = found; return true;
     }
-    private void ReceiveIntent(IReadMessage msg, Client client)
+    private void ReceiveIntent(IntentMessage msg, Client client)
     {
-        if (!ReadActor(msg, client, out var peer)) { return; }
-        if (!peer.Intents.AcceptLatest(InputIntent.Read(msg), Now)) { _stalePackets++; }
+        if (!ReadActor(msg.CharacterId, msg.Nonce, msg.Generation, client, out var peer)) { return; }
+        if (!peer.Intents.AcceptLatest(msg.Intent.ToIntent(), Now)) { _stalePackets++; }
     }
-    private void ReceiveAction(IReadMessage msg, Client client)
+    private void ReceiveAction(ActionMessage msg, Client client)
     {
-        if (!ReadActor(msg, client, out var peer)) { return; }
-        var id = msg.ReadUInt32();
-        var result = peer.Intents.EnqueueAction(id, InputIntent.Read(msg), Now);
+        if (!ReadActor(msg.CharacterId, msg.Nonce, msg.Generation, client, out var peer)) { return; }
+        var result = peer.Intents.EnqueueAction(msg.ActionId, msg.Intent.ToIntent(), Now);
         if (result == ActionResult.Accepted) { _actions++; return; }
         _stalePackets++;
         if (result != ActionResult.Overflow) { return; }
-        // Fail closed and resynchronize only the actor channel, never the body's position.
         peer.Generation = ++_nextEpoch; peer.Intents.Reset(); peer.PublishedState = null; peer.StateRevision = 0;
         StopInput(peer.Character);
         foreach (var observer in _peers.Values) { SendActorControl(peer, observer); }
     }
-    private bool ReadIdentity(IReadMessage msg, Client client, out BodyAuthority authority, out PeerSession peer)
+    private bool ReadIdentity(ushort id, ulong nonce, ulong epoch, Client client, out BodyAuthority authority, out PeerSession peer)
     {
         authority = null!; peer = null!;
-        if (_disposed || !MovementProtocol.ReadIdentity(msg, out var id, out var nonce, out var epoch) ||
+        if (_disposed ||
             !_peers.TryGetValue(client, out var foundPeer) || !PeerValid(foundPeer) ||
             Entity.FindEntityByID(id) is not Character c || !_authorities.TryGetValue(c, out var found) ||
             !MovementPolicy.MatchesIdentity(c.ID, foundPeer.Nonce, found.Epoch, id, nonce, epoch))
         { _stalePackets++; return false; }
         authority = found; peer = foundPeer; return true;
     }
-    private void ReceiveControlAck(IReadMessage msg, Client client)
+    private void ReceiveControlAck(ControlAckMessage msg, Client client)
     {
-        if (!ReadIdentity(msg, client, out var a, out var peer) || a.Writer != peer || DesiredWriter(a.Character) != peer) { return; }
-        a.Ready = msg.ReadBoolean(); msg.ReadPadBits(); a.Acknowledged = true;
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Epoch, client, out var a, out var peer) || a.Writer != peer || DesiredWriter(a.Character) != peer) { return; }
+        a.Ready = msg.Ready; a.Acknowledged = true;
     }
-    private void ReceiveSnapshot(IReadMessage msg, Client client)
+    private void ReceiveSnapshot(SnapshotMessage msg, Client client)
     {
-        if (!ReadIdentity(msg, client, out var a, out var peer) || a.Mode != AuthorityMode.Client || !a.Acknowledged || !a.Ready ||
+        if (!ReadIdentity(msg.CharacterId, msg.Nonce, msg.Epoch, client, out var a, out var peer) || a.Mode != AuthorityMode.Client || !a.Acknowledged || !a.Ready ||
             !MovementPolicy.CanWriteBody(a.Writer?.Character.ID ?? 0, peer.Character.ID, DesiredWriter(a.Character)?.Character.ID ?? 0))
         { _stalePackets++; return; }
-        var sample = MovementSample.Read(msg);
+        var sample = msg.Sample.ToSample();
         if (!sample.IsValid || !ValidPose(a.Character, sample) || !Resolve(sample, out _, out _, out _))
         { a.Character.healthUpdateTimer = 0; _stalePackets++; return; }
         if (a.Inbox.Latest is { } previous && !MovementPolicy.MoreRecent(sample.Sequence, previous.Sequence))
@@ -232,16 +227,18 @@ public partial class Plugin
         a.Acknowledged = a.Ready = false; a.Inbox.Reset(); a.RelayedSequence = 0; a.ReceivedAt = Now;
         a.Character.memInput.Clear();
         foreach (var peer in _peers.Values) { SendControl(a, peer); }
-        LoggerService.Log($"[NoMoreRubberbanding] body={a.Character.ID}, writer={a.Writer?.Character.ID ?? 0}, authority={mode}, reason={reason}, epoch={a.Epoch}");
+        DebugConsole.NewMessage($"[NoMoreRubberbanding] body={a.Character.ID}, writer={a.Writer?.Character.ID ?? 0}, authority={mode}, reason={reason}, epoch={a.Epoch}");
         if (mode == AuthorityMode.Server) { _takeovers++; }
     }
     private static void SendControl(BodyAuthority a, PeerSession peer)
     {
         if (!a.Seed.IsValid) { return; }
-        var msg = Network.Start(MovementProtocol.Control);
-        MovementProtocol.WriteIdentity(msg, a.Character.ID, peer.Nonce, a.Epoch);
-        msg.WriteByte((byte)a.Mode); msg.WriteByte((byte)a.Reason); msg.WriteUInt16(a.Writer?.Character.ID ?? 0);
-        a.Seed.Write(msg); Network.SendToClient(msg, peer.Client.Connection);
+        Network.SendToClient(peer.Client, MovementHeader.Control, new ControlMessage
+        {
+            CharacterId = a.Character.ID, Nonce = peer.Nonce, Epoch = a.Epoch,
+            Mode = (byte)a.Mode, Reason = (byte)a.Reason, Writer = a.Writer?.Character.ID ?? 0,
+            Sample = MovementSampleMessage.From(a.Seed)
+        });
     }
     private static void StopInput(Character c)
     {
@@ -321,9 +318,11 @@ public partial class Plugin
             foreach (var peer in _peers.Values)
             {
                 if (peer == a.Writer) { continue; }
-                var msg = Network.Start(MovementProtocol.Pose);
-                MovementProtocol.WriteIdentity(msg, a.Character.ID, peer.Nonce, a.Epoch);
-                sample.Write(msg); Network.SendToClient(msg, peer.Client.Connection, DeliveryMethod.Unreliable);
+                Network.SendToClient(peer.Client, MovementHeader.Pose, new PoseMessage
+                {
+                    CharacterId = a.Character.ID, Nonce = peer.Nonce, Epoch = a.Epoch,
+                    Sample = MovementSampleMessage.From(sample)
+                });
             }
         }
     }
@@ -341,9 +340,11 @@ public partial class Plugin
     }
     private static void SendInteraction(PeerSession actor, PeerSession recipient, InteractionState state)
     {
-        var msg = Network.Start(MovementProtocol.Interaction);
-        MovementProtocol.WriteIdentity(msg, actor.Character.ID, recipient.Nonce, actor.Generation);
-        state.Write(msg); Network.SendToClient(msg, recipient.Client.Connection);
+        Network.SendToClient(recipient.Client, MovementHeader.Interaction, new InteractionMessage
+        {
+            CharacterId = actor.Character.ID, Nonce = recipient.Nonce, Generation = actor.Generation,
+            State = InteractionStateMessage.From(state)
+        });
     }
     private static void AfterTeleport(Character __instance)
     {
