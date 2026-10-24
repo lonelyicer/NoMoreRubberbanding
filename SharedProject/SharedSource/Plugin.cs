@@ -98,11 +98,18 @@ public partial class Plugin : IAssemblyPlugin, IEventUpdate, IEventRoundStarted,
     private static ulong NewToken() => BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8)) | 1UL;
 
     private static bool CanOwnMovement(Character c) =>
-        c is { Removed: false, Enabled: true } && !c.IsAttachedToController() && c.Latchers.Count == 0 &&
+        c is { Removed: false, Enabled: true } && !IsAttachedToAnyController(c) && c.Latchers.Count == 0 &&
         !c.AnimController.IsDraggedWithRope && !c.AnimController.IsHangingWithRope &&
         !c.AnimController.IsHoldingToRope && !c.AnimController.Invalid &&
         c.AnimController.Limbs.Length <= MovementPolicy.MaxPoseLimbs && c.AnimController.ColliderIndex <= byte.MaxValue &&
         c.AnimController.Collider is { Removed: false };
+
+    private static bool IsAttachedToAnyController(Character c) =>
+        // Vanilla IsAttachedToController only checks SelectedItem. Chairs are secondary
+        // controllers, so a force-attached chair would otherwise remain client-authoritative.
+        c.IsAttachedToController() ||
+        (c.SelectedSecondaryItem?.GetComponent<Barotrauma.Items.Components.Controller>() is { } controller &&
+         controller.IsAttachedUser(c));
 
     private static MovementSample Capture(Character c, uint sequence)
     {

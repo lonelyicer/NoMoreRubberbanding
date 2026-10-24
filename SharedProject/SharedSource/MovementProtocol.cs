@@ -15,6 +15,7 @@ internal static class MovementPolicy
     public const double SnapshotTimeout = 2.0;
     public const double ControlTimeout = 5.0;
     public const double InputTimeout = 0.5;
+    public const double TeleportHold = 0.5;
     public const int MaxPendingActions = 128;
     public const ushort Facing = 0x10, RagdollKey = 0x800;
     public const ushort EdgeMask = 0x80 | 0x1000 | 0x2000 | 0x4000;
@@ -31,6 +32,7 @@ internal static class MovementPolicy
         expectedCharacter == character && expectedNonce == nonce && expectedEpoch == epoch;
     public static bool MoreRecent(uint value, uint previous) => unchecked((int)(value - previous)) > 0;
     public static bool Expired(double now, double receivedAt, double timeout) => now - receivedAt > timeout;
+    public static bool RecoveryAllowed(double now, double holdUntil) => now >= holdUntil;
     public static bool Valid(float value, float limit) => float.IsFinite(value) && Math.Abs(value) <= limit;
     public static ushort AllowedActions(ushort flags, bool canAct, bool reverseDrag) =>
         !canAct ? (ushort)0 : reverseDrag ? (ushort)(flags & ~(0x80 | 0x2000)) : flags;
