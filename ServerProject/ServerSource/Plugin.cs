@@ -27,7 +27,7 @@ public partial class Plugin
         public bool Acknowledged, Ready;
         public readonly MovementInbox Inbox = new();
         public MovementSample Seed;
-        public double ReceivedAt = Now, NextHeartbeat;
+        public double ReceivedAt = Now, NextHeartbeat, TeleportHoldUntil;
         public uint RelayedSequence;
     }
 
@@ -112,7 +112,8 @@ public partial class Plugin
                 case AuthorityMode.Client when MovementPolicy.Expired(Now, a.ReceivedAt, MovementPolicy.SnapshotTimeout):
                     ChangeAuthority(a, AuthorityMode.Server, TakeoverReason.Timeout);
                     break;
-                case AuthorityMode.Server when desired != null && a.Acknowledged && a.Ready:
+                case AuthorityMode.Server when desired != null && a.Acknowledged && a.Ready &&
+                    MovementPolicy.RecoveryAllowed(Now, a.TeleportHoldUntil):
                     ChangeAuthority(a, AuthorityMode.Client, TakeoverReason.Recovery);
                     break;
             }
@@ -225,6 +226,7 @@ public partial class Plugin
         a.Seed = Capture(a.Character, 0);
         a.Epoch = ++_nextEpoch; a.Mode = mode; a.Reason = reason;
         a.Acknowledged = a.Ready = false; a.Inbox.Reset(); a.RelayedSequence = 0; a.ReceivedAt = Now;
+        if (reason != TakeoverReason.Teleport) { a.TeleportHoldUntil = 0; }
         a.Character.memInput.Clear();
         foreach (var peer in _peers.Values) { SendControl(a, peer); }
         DebugConsole.NewMessage($"[NoMoreRubberbanding] body={a.Character.ID}, writer={a.Writer?.Character.ID ?? 0}, authority={mode}, reason={reason}, epoch={a.Epoch}");
@@ -348,14 +350,16 @@ public partial class Plugin
     }
     private static void AfterTeleport(Character __instance)
     {
-        if (_instance is not { } p) { return; }
+        if (_instance is not { } p || !p._authorities.TryGetValue(__instance, out var a)) { return; }
+        a.TeleportHoldUntil = Now + MovementPolicy.TeleportHold;
+        if (a.Mode == AuthorityMode.Server) { return; }
         if (p.Actor(__instance) is { } actor)
         {
             actor.Generation = ++p._nextEpoch; actor.Intents.Reset(); actor.PublishedState = null; actor.StateRevision = 0;
             StopInput(__instance);
             foreach (var peer in p._peers.Values) { SendActorControl(actor, peer); }
         }
-        if (p._authorities.TryGetValue(__instance, out var a)) { p.ChangeAuthority(a, AuthorityMode.Server, TakeoverReason.Teleport); }
+        p.ChangeAuthority(a, AuthorityMode.Server, TakeoverReason.Teleport);
     }
     private static void AfterNetReset(Character __instance)
     {
