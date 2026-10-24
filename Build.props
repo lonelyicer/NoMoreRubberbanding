@@ -23,7 +23,7 @@
         <PackageReference Include="OneOf" Version="3.0.271" />
         <PackageReference Include="FluentResults" Version="3.16.0" />
     </ItemGroup>
-    
+
     <!-- User/Mod Settings -->
     <PropertyGroup>
         <!-- Default builds stage a complete mod under dist; override with -p:ModDeployDir=/path/to/mod/. -->
@@ -34,8 +34,8 @@
         <RootNamespace>NoMoreRubberbanding</RootNamespace>
         <GenerateDocumentationFile>False</GenerateDocumentationFile>
         <!-- These two numbers should match under almost all circumstances. -->
-        <AssemblyVersion>0.2.0.0</AssemblyVersion>
-        <FileVersion>0.2.0.0</FileVersion>
+        <AssemblyVersion>0.2.1.0</AssemblyVersion>
+        <FileVersion>0.2.1.0</FileVersion>
         <Authors />
     </PropertyGroup>
 
