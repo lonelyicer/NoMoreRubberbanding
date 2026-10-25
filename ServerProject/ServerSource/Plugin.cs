@@ -32,6 +32,8 @@ public partial class Plugin
     }
 
     private readonly Dictionary<Client, PeerSession> _peers = new();
+    private readonly Dictionary<ushort, PeerSession> _peersByCharacter = new();
+    private readonly HashSet<Client> _connectedClients = new();
     private readonly Dictionary<Character, BodyAuthority> _authorities = new();
     [ThreadStatic] private static int _relocationDepth;
     private ulong _nextEpoch = NewToken() & 0x7FFF_FFFF_0000_0000UL;
@@ -67,13 +69,26 @@ public partial class Plugin
     private void ResetSessions()
     {
         foreach (var peer in _peers.Values) { StopInput(peer.Character); }
-        _peers.Clear(); _authorities.Clear();
+        _peers.Clear(); _peersByCharacter.Clear(); _connectedClients.Clear(); _authorities.Clear();
+    }
+    private void UnindexPeer(PeerSession peer)
+    {
+        if (_peersByCharacter.TryGetValue(peer.Character.ID, out var indexed) && indexed == peer)
+        { _peersByCharacter.Remove(peer.Character.ID); }
     }
     private bool PeerValid(PeerSession peer) => GameMain.Server is { GameStarted: true } &&
         peer.Client.Character == peer.Character && !peer.Character.Removed &&
-        GameMain.Server.ConnectedClients.Contains(peer.Client) &&
+        _connectedClients.Contains(peer.Client) &&
         !MovementPolicy.Expired(Now, peer.LastHello, MovementPolicy.ControlTimeout);
-    private PeerSession? Actor(Character c) => _peers.Values.FirstOrDefault(p => p.Character == c && PeerValid(p));
+    private PeerSession? Actor(Character c)
+    {
+        if (GameMain.Server is not { GameStarted: true } || c.Removed ||
+            !_peersByCharacter.TryGetValue(c.ID, out var peer) || peer.Character != c ||
+            peer.Client.Character != c || !_connectedClients.Contains(peer.Client) ||
+            MovementPolicy.Expired(Now, peer.LastHello, MovementPolicy.ControlTimeout))
+        { return null; }
+        return peer;
+    }
 
     private PeerSession? DesiredWriter(Character c)
     {
@@ -87,10 +102,13 @@ public partial class Plugin
     }
     private void RefreshAuthorities()
     {
+        _connectedClients.Clear();
+        if (GameMain.Server is { GameStarted: true } server)
+        { foreach (var client in server.ConnectedClients) { _connectedClients.Add(client); } }
         foreach (var peer in _peers.Values.ToArray())
         {
             if (PeerValid(peer)) { continue; }
-            StopInput(peer.Character); _peers.Remove(peer.Client);
+            StopInput(peer.Character); UnindexPeer(peer); _peers.Remove(peer.Client);
         }
         var candidates = _peers.Values.Select(p => p.Character)
             .Concat(_peers.Values.Select(p => p.Character.SelectedCharacter).OfType<Character>())
@@ -149,11 +167,14 @@ public partial class Plugin
         var fresh = !_peers.TryGetValue(client, out var peer) || peer.Character != c || peer.Nonce != nonce;
         if (fresh)
         {
+            if (_peers.TryGetValue(client, out var oldPeer)) { UnindexPeer(oldPeer); }
             peer = new PeerSession(client, c, nonce, ++_nextEpoch); _peers[client] = peer;
+            _peersByCharacter[c.ID] = peer; _connectedClients.Add(client);
             StopInput(c);
             foreach (var observer in _peers.Values) { SendActorControl(peer, observer); }
         }
         peer!.LastHello = Now;
+        _connectedClients.Add(client); _peersByCharacter[c.ID] = peer;
         foreach (var actor in _peers.Values)
         {
             SendActorControl(actor, peer);
@@ -363,7 +384,8 @@ public partial class Plugin
     private static void AfterNetReset(Character __instance)
     {
         if (_instance is not { } p) { return; }
-        foreach (var peer in p._peers.Values.Where(s => s.Character == __instance).ToArray()) { p._peers.Remove(peer.Client); }
+        foreach (var peer in p._peers.Values.Where(s => s.Character == __instance).ToArray())
+        { p.UnindexPeer(peer); p._peers.Remove(peer.Client); }
         p.RefreshAuthorities();
     }
     private static void EnterRelocation(out int __state) { __state = _relocationDepth; _relocationDepth++; }
