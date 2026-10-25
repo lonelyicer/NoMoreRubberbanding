@@ -34,8 +34,8 @@
         <RootNamespace>NoMoreRubberbanding</RootNamespace>
         <GenerateDocumentationFile>False</GenerateDocumentationFile>
         <!-- These two numbers should match under almost all circumstances. -->
-        <AssemblyVersion>0.2.1.0</AssemblyVersion>
-        <FileVersion>0.2.1.0</FileVersion>
+        <AssemblyVersion>0.2.2.0</AssemblyVersion>
+        <FileVersion>0.2.2.0</FileVersion>
         <Authors />
     </PropertyGroup>
 
